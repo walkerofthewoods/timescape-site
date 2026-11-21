@@ -45,6 +45,8 @@ jobs:
         run: npx quartz plugin install
       - name: Build Quartz
         run: npx quartz build
+      - name: Fix map asset paths for project sites
+        run: node scripts/fix-map-asset-paths.mjs
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
