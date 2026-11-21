@@ -2,6 +2,11 @@
 
 // put your custom CSS here!
 
+.ttrpg-map-root {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
 .ttrpg-map-root .zm-hud__panel {
   display: none;
 }
