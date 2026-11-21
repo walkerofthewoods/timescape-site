@@ -1,3 +1,7 @@
 @use "./variables.scss" as *;
 
 // put your custom CSS here!
+
+.ttrpg-map-root .zm-hud__panel {
+  display: none;
+}
