@@ -226,6 +226,10 @@ export function writePluginIndex({ pluginsDir, npmPackages = [], verbose = false
       if (verbose) console.warn(styleText("yellow", `⚠`), message)
     },
   })
-  fs.writeFileSync(path.join(pluginsDir, "index.ts"), source)
+  const indexPath = path.join(pluginsDir, "index.ts")
+  const existing = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, "utf-8") : null
+  if (existing !== source) {
+    fs.writeFileSync(indexPath, source)
+  }
   return entries
 }

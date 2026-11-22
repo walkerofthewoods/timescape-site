@@ -14,5 +14,6 @@ quartz/cli/tui/dist/
 .turbo/
 content/
 _vault/
+.quartz-preview/
 test-results/
 playwright-report/

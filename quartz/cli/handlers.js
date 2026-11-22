@@ -340,9 +340,10 @@ export async function handleBuild(argv) {
   console.log(
     `\n${styleText(["bgGreen", "black"], ` Quartz v${version} `)} ${describe ? styleText("gray", describe) : ""}\n`,
   )
+  const buildCacheFile = argv.serve ? "./quartz/.quartz-cache/transpiled-serve.mjs" : cacheFile
   const ctx = await esbuild.context({
     entryPoints: [fp],
-    outfile: cacheFile,
+    outfile: buildCacheFile,
     bundle: true,
     keepNames: true,
     minifyWhitespace: true,
@@ -435,7 +436,7 @@ export async function handleBuild(argv) {
     release()
 
     if (argv.bundleInfo) {
-      const outputFileName = "quartz/.quartz-cache/transpiled-build.mjs"
+      const outputFileName = buildCacheFile.replace(/^\.\//, "")
       const meta = result.metafile.outputs[outputFileName]
       console.log(
         `Successfully transpiled ${Object.keys(meta.inputs).length} files (${prettyBytes(
@@ -447,7 +448,7 @@ export async function handleBuild(argv) {
 
     // bypass module cache
     // https://github.com/nodejs/modules/issues/307
-    const { default: buildQuartz } = await import(`../../${cacheFile}?update=${randomUUID()}`)
+    const { default: buildQuartz } = await import(`../../${buildCacheFile}?update=${randomUUID()}`)
     // ^ this import is relative, so base "cacheFile" path can't be used
 
     cleanupBuild = await buildQuartz(argv, buildMutex, clientRefresh)

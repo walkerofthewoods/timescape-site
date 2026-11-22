@@ -16,11 +16,12 @@ Build and preview locally:
 
 ```bash
 npm run install-plugins
-npm run preview        # syncs vault and runs quartz build --serve
+npm run preview        # syncs vault and runs quartz build --serve into .quartz-preview/
+npm run serve          # runs quartz build --serve into .quartz-preview/ without re-syncing
 npm run build          # builds public/ and rewrites map asset paths for GitHub Pages
 ```
 
-If `z_player_facing/index.md` does not exist in the vault, `scripts/sync-vault.mjs` falls back to `overrides/index.md`.
+`preview` and `serve` write to `.quartz-preview/` with a dedicated esbuild cache so `npm run build` and `npm run test:e2e` do not disrupt a running dev server. If `z_player_facing/index.md` does not exist in the vault, `scripts/sync-vault.mjs` falls back to `overrides/index.md`.
 
 ## Testing & Verification
 

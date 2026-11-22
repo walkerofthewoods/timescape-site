@@ -4,5 +4,6 @@ node_modules
 content
 _vault
 .quartz
+.quartz-preview
 test-results
 playwright-report

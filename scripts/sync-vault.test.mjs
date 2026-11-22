@@ -1,5 +1,14 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import test from "node:test"
@@ -180,6 +189,47 @@ test("syncVault preserves vault index.md when present and cleans stale synced fi
     assert.equal(result.copiedPages, 2)
     assert.ok(!existsSync(join(content, "StaleNote.md")))
     assert.match(readFileSync(join(content, "index.md"), "utf8"), /Vault Home/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("syncVault reconciles files in place without rewriting unchanged files or deleting content root", () => {
+  const { root, vault, content, fallbackIndex } = createFixtureWorkspace()
+  try {
+    writeFixtureFile(vault, "z_player_facing/Unchanged.md", "same")
+    writeFixtureFile(vault, "z_player_facing/Modified.md", "v1")
+    writeFixtureFile(vault, "z_player_facing/OldDir/Removed.md", "gone")
+
+    syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+
+    const past = new Date(Date.now() - 60_000)
+    const unchangedDest = join(content, "Unchanged.md")
+    const modifiedDest = join(content, "Modified.md")
+    utimesSync(unchangedDest, past, past)
+    utimesSync(modifiedDest, past, past)
+    const unchangedMtimeBefore = statSync(unchangedDest).mtimeMs
+    const modifiedMtimeBefore = statSync(modifiedDest).mtimeMs
+
+    writeFixtureFile(vault, "z_player_facing/Modified.md", "v2")
+    rmSync(join(vault, "z_player_facing/OldDir/Removed.md"))
+
+    const result = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+
+    assert.equal(result.copiedPages, 3)
+    assert.equal(statSync(unchangedDest).mtimeMs, unchangedMtimeBefore)
+    assert.notEqual(statSync(modifiedDest).mtimeMs, modifiedMtimeBefore)
+    assert.equal(readFileSync(modifiedDest, "utf8"), "v2")
+    assert.ok(!existsSync(join(content, "OldDir")))
+    assert.ok(existsSync(content))
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -1,4 +1,13 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { parse as parseYaml } from "yaml"
@@ -354,6 +363,17 @@ function resolveAssetPath(reference, sourceFile, context) {
   return { status: "missing", reference: normalized }
 }
 
+function pruneEmptyDirectories(directory, rootDirectory) {
+  if (!existsSync(directory)) return
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    pruneEmptyDirectories(join(directory, entry.name), rootDirectory)
+  }
+  if (resolve(directory) !== resolve(rootDirectory) && readdirSync(directory).length === 0) {
+    rmdirSync(directory)
+  }
+}
+
 export function syncVault({
   vaultDirectory,
   contentDirectory = join(siteDirectory, "content"),
@@ -380,21 +400,14 @@ export function syncVault({
     resolve(resolvedVault, ...dir.replaceAll("\\", "/").split("/").filter(Boolean)),
   )
 
-  rmSync(resolvedContent, { recursive: true, force: true })
-  mkdirSync(resolvedContent, { recursive: true })
-  cpSync(playerFacingDirectory, resolvedContent, {
-    recursive: true,
-    dereference: true,
-    filter: (sourcePath) => {
-      if (resolve(sourcePath) === playerFacingDirectory) return true
-      const rel = relative(playerFacingDirectory, sourcePath).replaceAll("\\", "/")
-      return !hasDotSegment(rel)
-    },
-  })
+  const desiredFiles = new Map()
+  for (const sourceFile of walkFiles(playerFacingDirectory)) {
+    const relPosix = relative(playerFacingDirectory, sourceFile).replaceAll("\\", "/")
+    desiredFiles.set(relPosix, sourceFile)
+  }
 
-  const vaultIndexPath = join(resolvedContent, "index.md")
-  if (!existsSync(vaultIndexPath) && fallbackIndexPath && existsSync(fallbackIndexPath)) {
-    cpSync(fallbackIndexPath, vaultIndexPath, { dereference: true })
+  if (!desiredFiles.has("index.md") && fallbackIndexPath && existsSync(fallbackIndexPath)) {
+    desiredFiles.set("index.md", resolve(fallbackIndexPath))
   }
 
   const shortestPathIndex = buildShortestPathIndex([playerFacingDirectory, ...allowedAssetDirPaths])
@@ -452,15 +465,38 @@ export function syncVault({
   let copiedExtraAssets = 0
   for (const sourceAsset of requiredAssets) {
     if (isWithinDirectory(sourceAsset, playerFacingDirectory)) continue
-    const relativeAsset = relative(resolvedVault, sourceAsset)
-    const destinationAsset = join(resolvedContent, relativeAsset)
-    mkdirSync(dirname(destinationAsset), { recursive: true })
-    cpSync(sourceAsset, destinationAsset, { dereference: true })
+    const relPosix = relative(resolvedVault, sourceAsset).replaceAll("\\", "/")
+    desiredFiles.set(relPosix, sourceAsset)
     copiedExtraAssets++
   }
 
-  const copiedPages = walkFiles(resolvedContent).filter(
-    (file) => posix.extname(file.toLowerCase()) === ".md",
+  mkdirSync(resolvedContent, { recursive: true })
+
+  for (const [relPosix, sourcePath] of desiredFiles) {
+    const destPath = join(resolvedContent, ...relPosix.split("/"))
+    const sourceBytes = readFileSync(sourcePath)
+    if (existsSync(destPath)) {
+      if (statSync(destPath).isFile()) {
+        if (readFileSync(destPath).equals(sourceBytes)) continue
+      } else {
+        rmSync(destPath, { recursive: true, force: true })
+      }
+    }
+    mkdirSync(dirname(destPath), { recursive: true })
+    writeFileSync(destPath, sourceBytes)
+  }
+
+  for (const existingFile of walkFiles(resolvedContent, { skipDotDirectories: false })) {
+    const relPosix = relative(resolvedContent, existingFile).replaceAll("\\", "/")
+    if (!desiredFiles.has(relPosix)) {
+      rmSync(existingFile, { force: true })
+    }
+  }
+
+  pruneEmptyDirectories(resolvedContent, resolvedContent)
+
+  const copiedPages = [...desiredFiles.keys()].filter(
+    (relPath) => posix.extname(relPath.toLowerCase()) === ".md",
   ).length
 
   return {
