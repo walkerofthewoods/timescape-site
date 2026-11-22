@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  repository_dispatch:
+    types: [vault-updated]
   workflow_dispatch:
 
 permissions:
@@ -19,9 +21,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate vault repository configuration
+        env:
+          VAULT_REPO: ${{ vars.VAULT_REPO }}
+        run: |
+          if [ -z "$VAULT_REPO" ]; then
+            echo "::error::Repository variable VAULT_REPO is not set. Set VAULT_REPO to <owner>/<vault-repo> in GitHub repository Settings -> Secrets and variables -> Actions -> Variables (and add a read-only VAULT_TOKEN secret if the vault repo is private)."
+            exit 1
+          fi
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Checkout Obsidian vault
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.VAULT_REPO }}
+          token: ${{ secrets.VAULT_TOKEN || github.token }}
+          path: _vault
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -32,21 +48,37 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-      - name: Cache Quartz plugins
-        uses: actions/cache@v5
-        with:
-          path: .quartz/plugins
-          key: ${{ runner.os }}-plugins-${{ hashFiles('quartz.lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-plugins-
       - name: Install dependencies
         run: npm ci
       - name: Install Quartz plugins
-        run: npx quartz plugin install
-      - name: Build Quartz
-        run: npx quartz build
-      - name: Fix map asset paths for project sites
-        run: node scripts/fix-map-asset-paths.mjs
+        run: npm run install-plugins
+      - name: Run script unit tests
+        run: npm run test:scripts
+      - name: Sync player-facing vault content
+        env:
+          TIMESCAPE_VAULT: ${{ github.workspace }}/_vault
+        run: npm run sync:vault
+      - name: Build site
+        run: npm run build
+      - name: Verify built site
+        run: npm run check:site
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Test built site in Playwright
+        run: npm run test:e2e
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

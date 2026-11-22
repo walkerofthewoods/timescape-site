@@ -4,7 +4,7 @@ import path from "path"
 import fs from "fs"
 import { PerfTimer } from "./util/perf"
 import { rm, readdir } from "fs/promises"
-import { GlobbyFilterFunction, isGitIgnored } from "globby"
+import { GlobbyFilterFunction, isIgnoredByIgnoreFiles } from "globby"
 import { styleText } from "util"
 import { parseMarkdown } from "./processors/parse"
 import { filterContent } from "./processors/filter"
@@ -205,7 +205,7 @@ async function startWatching(
     })
   }
 
-  const gitIgnoredMatcher = await isGitIgnored()
+  const gitIgnoredMatcher = await isIgnoredByIgnoreFiles("**/.gitignore", { cwd: argv.directory })
   const buildData: BuildData = {
     ctx,
     mut,

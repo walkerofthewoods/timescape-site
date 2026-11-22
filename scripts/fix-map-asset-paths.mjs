@@ -21,14 +21,19 @@ function encodeAttribute(value) {
 
 export function prefixMapAssetUrls(html, basePath) {
   const prefix = basePath.replace(/\/+$/, "")
-  if (!prefix) return html
 
   return html.replace(/data-qz-ttrpg-map-cfg="([^"]*)"/g, (attribute, encodedConfig) => {
     const config = JSON.parse(decodeAttribute(encodedConfig))
     let changed = false
 
     for (const image of config.resolvedImageUrls ?? []) {
+      if ("sourcePath" in image) {
+        delete image.sourcePath
+        changed = true
+      }
+
       if (
+        !prefix ||
         typeof image.url !== "string" ||
         !image.url.startsWith("/") ||
         image.url.startsWith("//") ||
@@ -72,12 +77,12 @@ export async function fixMapAssetPaths(outputDirectory) {
     const html = await readFile(file, "utf8")
     if (!html.includes("data-qz-ttrpg-map-cfg=")) continue
 
-    const basePathMatch = html.match(/<body\b[^>]*\bdata-basepath="([^"]*)"/)
+    const basePathMatch = html.match(/<body\b[^>]*\bdata-basepath(?:="([^"]*)")?(?=[\s>])/)
     if (!basePathMatch) {
       throw new Error(`Map configuration found without a data-basepath in ${file}`)
     }
 
-    const basePath = decodeAttribute(basePathMatch[1])
+    const basePath = decodeAttribute(basePathMatch[1] ?? "")
     const output = prefixMapAssetUrls(html, basePath)
     if (output !== html) {
       await writeFile(file, output, "utf8")
