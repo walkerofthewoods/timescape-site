@@ -4,13 +4,63 @@
 
 .ttrpg-map-root {
   box-sizing: border-box;
+  width: 100% !important;
   max-width: 100%;
+  height: max(480px, calc(100vh - 12rem)) !important;
+  height: max(480px, calc(100dvh - 12rem)) !important;
+}
+
+@media all and not ($mobile) {
+  .page:has(.ttrpg-map-root) {
+    max-width: none;
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
+
+    & > #quartz-body {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: none;
+      grid-template-columns: 280px minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "grid-sidebar-left grid-center"
+        "grid-sidebar-left grid-footer";
+      padding: 0;
+
+      & .sidebar.left {
+        padding-top: 2rem;
+      }
+
+      & .sidebar.right {
+        display: none;
+      }
+
+      & .center,
+      & footer {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        padding-left: 2rem;
+        padding-right: 2rem;
+      }
+
+      & .center {
+        grid-area: grid-center;
+      }
+
+      & .page-header {
+        margin-top: 1.5rem;
+      }
+    }
+  }
 }
 
 @media all and ($mobile) {
   .ttrpg-map-root {
-    min-height: 75vh;
-    min-height: 75dvh;
+    height: 75vh !important;
+    height: 75dvh !important;
   }
 }
 

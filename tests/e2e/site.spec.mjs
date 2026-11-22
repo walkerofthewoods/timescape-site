@@ -122,6 +122,17 @@ test("representative interactive map loads image and renders cleanly", async ({
 
   await expect(page.locator(".ttrpg-map-error")).toHaveCount(0)
   await expect(mapRoot.locator(".zm-hud__panel")).toBeHidden()
+  await expect(page.locator(".sidebar.right")).toBeHidden()
+  const bounds = await mapRoot.boundingBox()
+  const viewport = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    height: window.innerHeight,
+  }))
+  expect(bounds).not.toBeNull()
+  expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.width)
+  expect(bounds.width).toBeGreaterThanOrEqual(900)
+  expect(bounds.height).toBeGreaterThanOrEqual(580)
   health.assertClean()
 })
 
