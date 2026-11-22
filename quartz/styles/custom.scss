@@ -7,6 +7,13 @@
   max-width: 100%;
 }
 
+@media all and ($mobile) {
+  .ttrpg-map-root {
+    min-height: 75vh;
+    min-height: 75dvh;
+  }
+}
+
 .ttrpg-map-root .zm-hud__panel {
   display: none;
 }
