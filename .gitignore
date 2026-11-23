@@ -1,5 +1,4 @@
 .DS_Store
-.gitignore
 node_modules
 public
 prof
@@ -17,3 +16,7 @@ _vault/
 .quartz-preview/
 test-results/
 playwright-report/
+Thumbs.db
+*.log
+.env
+.env.*

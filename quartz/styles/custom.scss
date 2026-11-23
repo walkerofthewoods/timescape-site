@@ -1,4 +1,5 @@
 @use "./variables.scss" as *;
+@use "./chrysopolis.scss";
 
 // put your custom CSS here!
 
@@ -22,7 +23,7 @@
       width: 100%;
       max-width: none;
       grid-template-columns: 280px minmax(0, 1fr);
-      grid-template-rows: auto auto;
+      grid-template-rows: 1fr auto;
       grid-template-areas:
         "grid-sidebar-left grid-center"
         "grid-sidebar-left grid-footer";
@@ -36,14 +37,20 @@
         display: none;
       }
 
-      & .center,
-      & footer {
+      & > .center,
+      & > footer {
         box-sizing: border-box;
         width: 100%;
         min-width: 0;
         max-width: none;
         padding-left: 2rem;
         padding-right: 2rem;
+      }
+
+      & > .center > :is(.page-header, article, .popover-hint, hr, .page-footer),
+      & > footer {
+        max-width: none;
+        margin-inline: 0;
       }
 
       & .center {

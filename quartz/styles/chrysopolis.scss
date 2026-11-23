@@ -1,0 +1,748 @@
+@use "./variables.scss" as *;
+
+// =============================================================================
+// The Chrysopolis — Dual-World Theme
+// Light mode: The Upper City (travertine, terracotta, burnished gold)
+// Dark mode:  The Underwalks (volcanic stone, weathered timber, brass lanterns)
+// =============================================================================
+
+:root {
+  --titleFont: "Cinzel", Georgia, serif;
+  --headerFont: "Cinzel", Georgia, serif;
+  --bodyFont: "Source Sans 3", system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --codeFont: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-text: var(--bodyFont);
+  --font-monospace: var(--codeFont);
+  --h1-font: var(--headerFont);
+  --h2-font: var(--headerFont);
+  --h3-font: var(--headerFont);
+  --h4-font: var(--bodyFont);
+  --h5-font: var(--bodyFont);
+  --h6-font: var(--bodyFont);
+  --chrys-sidebar-bg: #efe6d5;
+  --chrys-sidebar-edge: #d8c6a8;
+  --chrys-surface: #fbf7ef;
+  --chrys-surface-inset: #f0e6d4;
+  --chrys-gold: #b8862b;
+  --chrys-gold-bright: #cf9c3a;
+  --chrys-gold-soft: rgba(184, 134, 43, 0.14);
+  --chrys-terracotta: #a9482c;
+  --chrys-terracotta-soft: rgba(169, 72, 44, 0.12);
+  --chrys-wood: #6e4e35;
+  --chrys-wood-rail: rgba(110, 78, 53, 0.24);
+  --chrys-olive: #5e7438;
+  --chrys-aegean: #2b6587;
+  --chrys-shadow: 0 10px 28px rgba(45, 31, 18, 0.08);
+  --chrys-top-glow: rgba(212, 166, 74, 0.09);
+}
+
+:root[saved-theme="dark"] {
+  --chrys-sidebar-bg: #1e1813;
+  --chrys-sidebar-edge: #463526;
+  --chrys-surface: #1d1814;
+  --chrys-surface-inset: #241e18;
+  --chrys-gold: #dfa946;
+  --chrys-gold-bright: #efc065;
+  --chrys-gold-soft: rgba(223, 169, 70, 0.15);
+  --chrys-terracotta: #df7854;
+  --chrys-terracotta-soft: rgba(223, 120, 84, 0.15);
+  --chrys-wood: #6b4e34;
+  --chrys-wood-rail: rgba(145, 108, 72, 0.36);
+  --chrys-olive: #8ea95c;
+  --chrys-aegean: #5b9ac0;
+  --chrys-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  --chrys-top-glow: rgba(223, 169, 70, 0.08);
+}
+
+// -----------------------------------------------------------------------------
+// Global canvas & sunlit / lantern top trim
+// -----------------------------------------------------------------------------
+
+body {
+  font-family: var(--bodyFont);
+  font-size: 1.02rem;
+  line-height: 1.68;
+  background-image: radial-gradient(
+    1100px 420px at 62% -80px,
+    var(--chrys-top-glow),
+    transparent 72%
+  );
+  background-repeat: no-repeat;
+  -webkit-font-smoothing: antialiased;
+
+  &::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 1000;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      var(--chrys-terracotta) 0%,
+      var(--chrys-gold) 32%,
+      var(--chrys-gold-bright) 50%,
+      var(--chrys-gold) 68%,
+      var(--chrys-terracotta) 100%
+    );
+  }
+}
+
+.navigation-progress {
+  background: var(--chrys-gold);
+}
+
+// -----------------------------------------------------------------------------
+// Consistent full-width layout shell (keeps sidebar pinned across note <-> map)
+// -----------------------------------------------------------------------------
+
+@media all and not ($mobile) {
+  .page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+
+    & > #quartz-body {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: none;
+      min-height: 100vh;
+      column-gap: 0;
+      padding: 0;
+
+      & > .sidebar.left {
+        box-sizing: border-box;
+        background-color: var(--chrys-sidebar-bg);
+        border-right: 1px solid var(--chrys-sidebar-edge);
+        box-shadow: inset -1px 0 0 var(--chrys-gold-soft);
+        padding: 2rem 1.25rem 1.75rem;
+      }
+
+      & > .sidebar.right {
+        box-sizing: border-box;
+        padding: 2rem 1.35rem 2rem 1.15rem;
+        border-left: 1px solid color-mix(in srgb, var(--chrys-sidebar-edge) 55%, transparent);
+      }
+
+      & > .center,
+      & > footer {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        padding-left: clamp(1.5rem, 3.5vw, 3rem);
+        padding-right: clamp(1.5rem, 3.5vw, 3rem);
+      }
+
+      & > .center {
+        grid-area: grid-center;
+      }
+
+      & > .center > :is(.page-header, article, .popover-hint, hr, .page-footer),
+      & > footer {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 52rem;
+        margin-inline: auto;
+      }
+
+      & > .center > .page-header {
+        margin-top: 2rem;
+      }
+
+      & > footer {
+        padding-top: 1.25rem;
+        padding-bottom: 2.25rem;
+        border-top: 1px solid color-mix(in srgb, var(--chrys-sidebar-edge) 60%, transparent);
+        margin-top: 2.5rem;
+      }
+    }
+  }
+}
+
+@media all and ($desktop) {
+  .page > #quartz-body {
+    grid-template-columns: 280px minmax(0, 1fr) 260px;
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+      "grid-sidebar-left grid-center grid-sidebar-right"
+      "grid-sidebar-left grid-footer grid-sidebar-right";
+  }
+}
+
+@media all and ($tablet) {
+  .page > #quartz-body {
+    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "grid-sidebar-left grid-center"
+      "grid-sidebar-left grid-sidebar-right"
+      "grid-sidebar-left grid-footer";
+  }
+}
+
+@media all and ($mobile) {
+  .page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+
+    & > #quartz-body {
+      padding: 0;
+
+      & > .sidebar.left {
+        box-sizing: border-box;
+        width: 100%;
+        background-color: var(--chrys-sidebar-bg);
+        border-bottom: 1px solid var(--chrys-sidebar-edge);
+        padding: 0.9rem 1rem 0.75rem;
+        gap: 0.55rem;
+
+        & .page-title {
+          font-size: 1.06rem;
+          white-space: nowrap;
+
+          &::after {
+            width: 2.5rem;
+            margin-top: 0.25rem;
+          }
+        }
+      }
+
+      & > .center,
+      & > .sidebar.right,
+      & > footer {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        padding-left: 1rem;
+        padding-right: 1rem;
+      }
+    }
+  }
+}
+
+:root[saved-theme="dark"] .page > #quartz-body > .sidebar.left {
+  background: linear-gradient(180deg, #221b16 0%, #191410 58%, #14100d 100%);
+  border-color: var(--chrys-wood);
+  box-shadow:
+    inset -1px 0 0 rgba(223, 169, 70, 0.14),
+    inset 0 1px 0 rgba(255, 224, 170, 0.04);
+}
+
+// -----------------------------------------------------------------------------
+// Sidebar Identity, Toolbar & Explorer (Carved Stone / Weathered Timber)
+// -----------------------------------------------------------------------------
+
+.page-title {
+  font-family: var(--titleFont);
+  font-weight: 700;
+  font-size: 1.42rem;
+  line-height: 1.18;
+  letter-spacing: 0.04em;
+  margin: 0;
+
+  a {
+    font-weight: 700;
+    color: var(--dark);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--secondary);
+    }
+  }
+
+  &::after {
+    content: "";
+    display: block;
+    width: 3.5rem;
+    height: 2px;
+    margin-top: 0.45rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--chrys-gold) 0%, var(--chrys-terracotta) 100%);
+  }
+}
+
+.search > .search-button {
+  box-sizing: border-box;
+  min-height: 2.15rem;
+  background-color: var(--chrys-surface);
+  border: 1px solid var(--chrys-sidebar-edge);
+  border-radius: 6px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--chrys-gold);
+    box-shadow: 0 0 0 2px var(--chrys-gold-soft);
+  }
+
+  svg {
+    color: var(--chrys-gold);
+  }
+}
+
+button.darkmode,
+button.readermode {
+  box-sizing: border-box;
+  width: 2.15rem;
+  height: 2.15rem;
+  background-color: var(--chrys-surface);
+  border: 1px solid var(--chrys-sidebar-edge);
+  border-radius: 6px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    top: calc(50% - 0.5rem);
+    left: calc(50% - 0.5rem);
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--chrys-gold);
+    box-shadow: 0 0 0 2px var(--chrys-gold-soft);
+  }
+}
+
+.explorer {
+  button.title-button,
+  button.desktop-explorer {
+    h2,
+    h3 {
+      font-family: var(--headerFont);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--gray);
+    }
+  }
+
+  .explorer-ul {
+    font-family: var(--bodyFont);
+    font-size: 0.92rem;
+    line-height: 1.42;
+
+    a,
+    button {
+      border-radius: 4px;
+      transition:
+        background-color 0.14s ease,
+        color 0.14s ease;
+    }
+
+    a {
+      padding: 0.18rem 0.42rem;
+
+      &:hover {
+        background-color: var(--chrys-gold-soft);
+        color: var(--secondary);
+      }
+
+      &.active {
+        background-color: var(--chrys-gold-soft);
+        color: var(--secondary);
+        font-weight: 600;
+        border-left: 2px solid var(--chrys-gold);
+        padding-left: calc(0.42rem - 2px);
+      }
+    }
+  }
+
+  .folder-container {
+    div > a,
+    div > button,
+    div > button span {
+      font-family: var(--bodyFont);
+      font-weight: 600;
+      color: var(--dark);
+    }
+
+    div > a:hover,
+    div > button:hover span {
+      color: var(--secondary);
+    }
+
+    .folder-icon {
+      color: var(--chrys-gold);
+    }
+  }
+
+  .folder-outer > ul {
+    border-left: 1px solid var(--chrys-wood-rail);
+    margin-left: 0.45rem;
+    padding-left: 0.6rem;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Search Modal & Popover Previews
+// -----------------------------------------------------------------------------
+
+.search-container {
+  & > .search-space {
+    background-color: var(--chrys-surface);
+    border: 1px solid var(--chrys-gold);
+    border-radius: 8px;
+    box-shadow: var(--chrys-shadow);
+
+    & > input.search-bar {
+      font-family: var(--bodyFont);
+      border-bottom: 1px solid var(--lightgray);
+    }
+
+    .search-layout {
+      border-top-color: var(--lightgray);
+    }
+
+    .results-container .result-card {
+      border-bottom-color: var(--lightgray);
+
+      &:hover,
+      &:focus,
+      &.focus {
+        background-color: var(--chrys-gold-soft);
+      }
+    }
+
+    .preview-container {
+      border-left-color: var(--lightgray);
+    }
+  }
+}
+
+.popover > .popover-inner {
+  background-color: var(--chrys-surface);
+  border: 1px solid var(--chrys-gold);
+  border-radius: 8px;
+  box-shadow: var(--chrys-shadow);
+}
+
+// -----------------------------------------------------------------------------
+// Crisp Wiki Headings, Breadcrumbs, Dividers & Body Elements
+// -----------------------------------------------------------------------------
+
+.breadcrumb-container {
+  font-family: var(--bodyFont);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray);
+
+  a:hover {
+    color: var(--secondary);
+  }
+
+  p {
+    color: var(--chrys-gold);
+  }
+}
+
+h1.article-title {
+  font-family: var(--headerFont);
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  line-height: 1.18;
+  color: var(--dark);
+  margin-bottom: 0.65rem;
+
+  &::after {
+    content: "";
+    display: block;
+    width: 4.5rem;
+    height: 3px;
+    margin-top: 0.6rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--chrys-gold) 0%, var(--chrys-terracotta) 100%);
+  }
+}
+
+.content-meta {
+  color: var(--gray);
+  font-size: 0.88rem;
+}
+
+article {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--headerFont);
+    letter-spacing: 0.015em;
+    color: var(--dark);
+  }
+
+  h2 {
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--lightgray);
+  }
+
+  h4,
+  h5,
+  h6 {
+    font-family: var(--bodyFont);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--darkgray);
+  }
+
+  a {
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+
+    &.internal {
+      background-color: transparent;
+      padding: 0 0.1rem;
+      border-radius: 3px;
+
+      &:hover {
+        background-color: var(--chrys-gold-soft);
+      }
+    }
+  }
+}
+
+.page-listing .section-li .desc h3,
+.page-listing .section-li .desc h3 a,
+.search-container .result-card h3 {
+  font-family: var(--bodyFont);
+  font-weight: 600;
+}
+
+a.tag-link,
+ul.tags a.internal.tag-link {
+  background-color: var(--chrys-surface-inset);
+  border: 1px solid var(--chrys-sidebar-edge);
+  color: var(--darkgray);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.12rem 0.6rem;
+  text-decoration: none;
+
+  &:hover {
+    border-color: var(--chrys-gold);
+    color: var(--secondary);
+    background-color: var(--chrys-gold-soft);
+  }
+}
+
+article > hr,
+.center > hr {
+  border: none;
+  height: 1px;
+  margin: 2.15rem auto;
+  position: relative;
+  overflow: visible;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--chrys-sidebar-edge) 20%,
+    var(--chrys-gold) 50%,
+    var(--chrys-sidebar-edge) 80%,
+    transparent 100%
+  );
+
+  &::after {
+    content: "◆";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 0 0.55rem;
+    background-color: var(--light);
+    color: var(--chrys-gold);
+    font-size: 0.7rem;
+    line-height: 1;
+  }
+}
+
+blockquote {
+  background-color: var(--chrys-surface-inset);
+  border-left: 3px solid var(--chrys-gold);
+  border-radius: 0 6px 6px 0;
+  padding: 0.7rem 1.1rem;
+  color: var(--darkgray);
+}
+
+.transclude {
+  background-color: var(--chrys-surface);
+  border: 1px solid var(--chrys-sidebar-edge);
+  border-left: 3px solid var(--chrys-terracotta);
+  border-radius: 6px;
+  padding: 0.85rem 1.1rem;
+}
+
+// -----------------------------------------------------------------------------
+// Callouts harmonized with Chrysopolis mineral & botanical tones
+// -----------------------------------------------------------------------------
+
+.callout {
+  border-radius: 6px;
+  border-width: 1px;
+  border-left-width: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+
+  &[data-callout="note"],
+  &[data-callout="abstract"],
+  &[data-callout="summary"],
+  &[data-callout="tldr"],
+  &[data-callout="info"] {
+    --color: var(--chrys-aegean);
+    --border: color-mix(in srgb, var(--chrys-aegean) 38%, var(--lightgray));
+    --bg: color-mix(in srgb, var(--chrys-aegean) 9%, var(--light));
+  }
+
+  &[data-callout="tip"],
+  &[data-callout="hint"],
+  &[data-callout="important"],
+  &[data-callout="success"],
+  &[data-callout="check"],
+  &[data-callout="done"] {
+    --color: var(--chrys-olive);
+    --border: color-mix(in srgb, var(--chrys-olive) 38%, var(--lightgray));
+    --bg: color-mix(in srgb, var(--chrys-olive) 10%, var(--light));
+  }
+
+  &[data-callout="todo"],
+  &[data-callout="question"],
+  &[data-callout="help"],
+  &[data-callout="faq"],
+  &[data-callout="warning"],
+  &[data-callout="caution"],
+  &[data-callout="attention"] {
+    --color: var(--chrys-gold);
+    --border: color-mix(in srgb, var(--chrys-gold) 44%, var(--lightgray));
+    --bg: color-mix(in srgb, var(--chrys-gold) 11%, var(--light));
+  }
+
+  &[data-callout="failure"],
+  &[data-callout="fail"],
+  &[data-callout="missing"],
+  &[data-callout="danger"],
+  &[data-callout="error"],
+  &[data-callout="bug"] {
+    --color: var(--chrys-terracotta);
+    --border: color-mix(in srgb, var(--chrys-terracotta) 44%, var(--lightgray));
+    --bg: color-mix(in srgb, var(--chrys-terracotta) 11%, var(--light));
+  }
+
+  &[data-callout="example"] {
+    --color: var(--chrys-wood);
+    --border: color-mix(in srgb, var(--chrys-wood) 42%, var(--lightgray));
+    --bg: color-mix(in srgb, var(--chrys-wood) 10%, var(--light));
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tables & Code
+// -----------------------------------------------------------------------------
+
+.table-container {
+  border-radius: 6px;
+
+  & > table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--chrys-sidebar-edge);
+  }
+
+  th {
+    font-family: var(--bodyFont);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.8rem;
+    background-color: var(--chrys-surface-inset);
+    color: var(--dark);
+    border-bottom: 2px solid var(--chrys-gold);
+    padding: 0.55rem 0.8rem;
+  }
+
+  td {
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid var(--lightgray);
+  }
+
+  tbody tr:nth-child(even) {
+    background-color: color-mix(in srgb, var(--chrys-surface-inset) 42%, transparent);
+  }
+}
+
+code {
+  background-color: var(--chrys-surface-inset);
+  border: 1px solid color-mix(in srgb, var(--chrys-sidebar-edge) 70%, transparent);
+  border-radius: 4px;
+  padding: 0.08rem 0.32rem;
+}
+
+pre {
+  background-color: var(--chrys-surface);
+  border: 1px solid var(--chrys-sidebar-edge);
+  border-radius: 8px;
+
+  & > code {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Right Sidebar (Table of Contents & Backlinks)
+// -----------------------------------------------------------------------------
+
+.toc,
+.backlinks {
+  h3 {
+    font-family: var(--headerFont);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dark);
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--lightgray);
+  }
+}
+
+.toc-content a.in-view {
+  color: var(--secondary);
+  font-weight: 600;
+}
+
+// -----------------------------------------------------------------------------
+// Cartographer's Brass Map Frame
+// -----------------------------------------------------------------------------
+
+.ttrpg-map-root {
+  --ttrpg-map-bg: #ebe1ce;
+  --ttrpg-map-border: var(--chrys-gold);
+  --ttrpg-map-hud-bg: rgba(251, 247, 239, 0.94);
+  --ttrpg-map-hud-fg: #1f1914;
+  --ttrpg-map-hud-accent: var(--chrys-terracotta);
+  --ttrpg-map-tooltip-bg: rgba(31, 25, 20, 0.94);
+  --ttrpg-map-tooltip-fg: #fbf7ef;
+  border: 1px solid var(--chrys-gold);
+  border-radius: 8px;
+  box-shadow: var(--chrys-shadow);
+  overflow: hidden;
+}
+
+:root[saved-theme="dark"] .ttrpg-map-root {
+  --ttrpg-map-bg: #120f0d;
+  --ttrpg-map-border: var(--chrys-gold);
+  --ttrpg-map-hud-bg: rgba(25, 20, 16, 0.94);
+  --ttrpg-map-hud-fg: #f2e7d3;
+  --ttrpg-map-hud-accent: var(--chrys-gold);
+  --ttrpg-map-tooltip-bg: rgba(20, 16, 13, 0.96);
+  --ttrpg-map-tooltip-fg: #f2e7d3;
+}

@@ -16,30 +16,35 @@ configuration:
     fontOrigin: googleFonts
     cdnCaching: true
     typography:
-      header: Schibsted Grotesk
-      body: Source Sans Pro
+      title:
+        name: Cinzel
+        weights: [400, 700]
+      header:
+        name: Cinzel
+        weights: [400, 600, 700]
+      body: Source Sans 3
       code: IBM Plex Mono
     colors:
       lightMode:
-        light: "#faf8f8"
-        lightgray: "#e5e5e5"
-        gray: "#b8b8b8"
-        darkgray: "#4e4e4e"
-        dark: "#2b2b2b"
-        secondary: "#284b63"
-        tertiary: "#84a59d"
-        highlight: rgba(143, 159, 169, 0.15)
-        textHighlight: "#fff23688"
+        light: "#f6f0e4"
+        lightgray: "#e4d8c3"
+        gray: "#8a7b66"
+        darkgray: "#382f27"
+        dark: "#1f1914"
+        secondary: "#a9482c"
+        tertiary: "#9c6d1b"
+        highlight: rgba(196, 146, 43, 0.14)
+        textHighlight: rgba(214, 165, 62, 0.35)
       darkMode:
-        light: "#161618"
-        lightgray: "#393639"
-        gray: "#646464"
-        darkgray: "#d4d4d4"
-        dark: "#ebebec"
-        secondary: "#7b97aa"
-        tertiary: "#84a59d"
-        highlight: rgba(143, 159, 169, 0.15)
-        textHighlight: "#b3aa0288"
+        light: "#151210"
+        lightgray: "#332a22"
+        gray: "#948470"
+        darkgray: "#d6cab8"
+        dark: "#f2e7d3"
+        secondary: "#dfa946"
+        tertiary: "#df7854"
+        highlight: rgba(223, 169, 70, 0.15)
+        textHighlight: rgba(223, 120, 84, 0.32)
   links:
     markdownLinkResolution: shortest
   contentIndex:
@@ -105,7 +110,7 @@ plugins:
     enabled: false
     order: 92
   - source: "@quartz-themes/core"
-    enabled: true
+    enabled: false
     options:
       theme: its-theme
       mode: both
