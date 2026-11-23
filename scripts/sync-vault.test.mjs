@@ -12,7 +12,12 @@ import {
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import test from "node:test"
-import { extractAssetReferences, normalizeReference, syncVault } from "./sync-vault.mjs"
+import {
+  extractAssetReferences,
+  extractPlayerFacingContent,
+  normalizeReference,
+  syncVault,
+} from "./sync-vault.mjs"
 
 function writeFixtureFile(root, relPath, content = "") {
   const fullPath = join(root, ...relPath.split("/"))
@@ -230,6 +235,260 @@ test("syncVault reconciles files in place without rewriting unchanged files or d
     assert.equal(readFileSync(modifiedDest, "utf8"), "v2")
     assert.ok(!existsSync(join(content, "OldDir")))
     assert.ok(existsSync(content))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("extractPlayerFacingContent extracts ::pf blocks, zoommap fences, unclosed markers, and pfn whole notes", () => {
+  const mixedMarkdown = [
+    "---",
+    "secret_dc: 18",
+    "---",
+    "Private GM intro.",
+    "",
+    "::pf",
+    "First public paragraph.",
+    "",
+    "```zoommap",
+    "imageBases:",
+    "  - path: z_Assets/Vasloria_Map.jpg",
+    "```",
+    "::/pf",
+    "",
+    "Private GM middle section.",
+    "```markdown",
+    "::pf",
+    "Fake marker inside code block",
+    "::/pf",
+    "```",
+    "",
+    "::pf",
+    "Unclosed public ending.",
+  ].join("\n")
+
+  const extracted = extractPlayerFacingContent(mixedMarkdown)
+  assert.equal(extracted.hasPlayerFacing, true)
+  assert.equal(extracted.isWholeNote, false)
+  assert.equal(extracted.hasMarkers, true)
+  assert.match(extracted.body, /First public paragraph\./)
+  assert.match(extracted.body, /z_Assets\/Vasloria_Map\.jpg/)
+  assert.match(extracted.body, /Unclosed public ending\./)
+  assert.doesNotMatch(extracted.body, /Private GM/)
+  assert.doesNotMatch(extracted.body, /Fake marker inside code block/)
+
+  const wholeNote = extractPlayerFacingContent("---\npfn: true\n---\n\nFull public map note\n")
+  assert.equal(wholeNote.hasPlayerFacing, true)
+  assert.equal(wholeNote.isWholeNote, true)
+  assert.equal(wholeNote.body, "Full public map note")
+
+  const falseWhole = extractPlayerFacingContent("---\npfn: false\n---\n\nOnly GM notes\n")
+  assert.equal(falseWhole.hasPlayerFacing, false)
+
+  const emptyTemplate = extractPlayerFacingContent("---\ntags: [template]\n---\n\n::pf\n\n::/pf\n")
+  assert.equal(emptyTemplate.hasPlayerFacing, false)
+})
+
+test("syncVault passes with zero drift when exports match despite GM-only edits and unwrapped wikilinks", () => {
+  const { root, vault, content, fallbackIndex } = createFixtureWorkspace()
+  try {
+    writeFixtureFile(
+      vault,
+      "Campaigns/Prologue.md",
+      [
+        "---",
+        "gm_notes: ambush planned",
+        "---",
+        "GM secret prep section updated later.",
+        "",
+        "::pf",
+        "**[[House Vorona]]** guards [[Secret GM Note|the Baron]] cleanly.",
+        "::/pf",
+      ].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Campaigns/Prologue.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Campaigns/Prologue.md"',
+        "tags: [lore]",
+        "aliases: [Intro]",
+        "---",
+        "",
+        "**House Vorona** guards the Baron cleanly.",
+      ].join("\n"),
+    )
+
+    writeFixtureFile(
+      vault,
+      "Atlas/Vasloria.md",
+      [
+        "---",
+        "pfn: true",
+        "---",
+        "```zoommap",
+        "imageBases:",
+        "  - path: z_Assets/Vasloria_Map.jpg",
+        "```",
+      ].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Atlas/Vasloria.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Atlas/Vasloria.md"',
+        "---",
+        "```zoommap",
+        "imageBases:",
+        "  - path: z_Assets/Vasloria_Map.jpg",
+        "```",
+      ].join("\n"),
+    )
+    writeFixtureFile(vault, "z_Assets/Vasloria_Map.jpg", "jpg-bytes")
+
+    const initialResult = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+    assert.deepEqual(initialResult.playerFacingDrift, [])
+
+    // Edit strictly GM-only content outside ::pf in Campaigns/Prologue.md
+    writeFixtureFile(
+      vault,
+      "Campaigns/Prologue.md",
+      [
+        "---",
+        "gm_notes: revised secret trap",
+        "---",
+        "Completely rewritten GM secret prep.",
+        "",
+        "::pf",
+        "**[[House Vorona]]** guards [[Secret GM Note|the Baron]] cleanly.",
+        "::/pf",
+      ].join("\n"),
+    )
+
+    const afterGmEdit = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+    assert.deepEqual(afterGmEdit.playerFacingDrift, [])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("syncVault detects stale, unexported, orphaned, and emptied player-facing exports without leaking secrets", () => {
+  const { root, vault, content, fallbackIndex } = createFixtureWorkspace()
+  try {
+    // 1. Edited ::pf block (out of date)
+    writeFixtureFile(
+      vault,
+      "Campaigns/Prologue.md",
+      [
+        "PRIVATE SECRET PHRASE DO NOT LEAK",
+        "::pf",
+        "Updated public recap text NEW_PUBLIC_LINE.",
+        "::/pf",
+      ].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Campaigns/Prologue.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Campaigns/Prologue.md"',
+        "---",
+        "Old exported recap text.",
+      ].join("\n"),
+    )
+
+    // 2. Unexported source note with player-facing content
+    writeFixtureFile(
+      vault,
+      "Campaigns/NewHandout.md",
+      ["---", "pfn: true", "---", "UNEXPORTED_HANDOUT_BODY_TOKEN"].join("\n"),
+    )
+
+    // 3. Exported file whose pfn-source was deleted
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Campaigns/DeletedSource.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Campaigns/DeletedSource.md"',
+        "---",
+        "Orphaned exported copy.",
+      ].join("\n"),
+    )
+
+    // 4. Exported file whose source no longer has player-facing content
+    writeFixtureFile(
+      vault,
+      "Campaigns/Retracted.md",
+      ["---", "pfn: false", "---", "SECRET_RETRACTED_BODY_TOKEN"].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Campaigns/Retracted.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Campaigns/Retracted.md"',
+        "---",
+        "Previously published text.",
+      ].join("\n"),
+    )
+
+    const result = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+
+    assert.equal(result.playerFacingDrift.length, 4)
+    assert.ok(
+      result.playerFacingDrift.some((issue) =>
+        issue.includes(
+          'z_player_facing/Campaigns/Prologue.md: out of date with "Campaigns/Prologue.md"',
+        ),
+      ),
+    )
+    assert.ok(
+      result.playerFacingDrift.some((issue) =>
+        issue.includes(
+          "Campaigns/NewHandout.md: has player-facing content not exported to z_player_facing/",
+        ),
+      ),
+    )
+    assert.ok(
+      result.playerFacingDrift.some((issue) =>
+        issue.includes(
+          'z_player_facing/Campaigns/DeletedSource.md: references missing pfn-source "Campaigns/DeletedSource.md"',
+        ),
+      ),
+    )
+    assert.ok(
+      result.playerFacingDrift.some((issue) =>
+        issue.includes(
+          'z_player_facing/Campaigns/Retracted.md: stale export because "Campaigns/Retracted.md" no longer has player-facing content',
+        ),
+      ),
+    )
+
+    const combinedOutput = result.playerFacingDrift.join("\n")
+    assert.doesNotMatch(combinedOutput, /PRIVATE SECRET PHRASE DO NOT LEAK/)
+    assert.doesNotMatch(combinedOutput, /NEW_PUBLIC_LINE/)
+    assert.doesNotMatch(combinedOutput, /UNEXPORTED_HANDOUT_BODY_TOKEN/)
+    assert.doesNotMatch(combinedOutput, /SECRET_RETRACTED_BODY_TOKEN/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

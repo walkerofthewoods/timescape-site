@@ -36,6 +36,282 @@ export const ALLOWED_ASSET_EXTENSIONS = new Set([
 
 export const DEFAULT_PLAYER_FACING_DIR = "z_player_facing"
 export const DEFAULT_ALLOWED_ASSET_DIRS = ["z_Assets"]
+const DEFAULT_PFN_OPEN_MARKER = "::pf"
+const DEFAULT_PFN_CLOSE_MARKER = "::/pf"
+const DEFAULT_PFN_WHOLE_NOTE_PROPERTY = "pfn"
+
+function splitFrontmatter(markdown) {
+  const normalized = markdown.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n")
+  if (normalized === "---" || normalized.startsWith("---\n---")) {
+    const rest = normalized.startsWith("---\n---\n") ? normalized.slice(8) : ""
+    return { frontmatter: {}, body: rest }
+  }
+
+  const match = normalized.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)
+  if (!match) return { frontmatter: null, body: normalized }
+
+  try {
+    const parsed = parseYaml(match[1])
+    const frontmatter =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null
+    return { frontmatter, body: normalized.slice(match[0].length) }
+  } catch {
+    return { frontmatter: null, body: normalized }
+  }
+}
+
+function loadPfnPluginConfig(vaultDirectory) {
+  const defaults = {
+    openMarker: DEFAULT_PFN_OPEN_MARKER,
+    closeMarker: DEFAULT_PFN_CLOSE_MARKER,
+    wholeNoteProperty: DEFAULT_PFN_WHOLE_NOTE_PROPERTY,
+    excludedFolders: [],
+  }
+
+  const configPath = join(
+    vaultDirectory,
+    ".obsidian",
+    "plugins",
+    "player-facing-notes",
+    "data.json",
+  )
+  if (!existsSync(configPath)) return defaults
+
+  try {
+    if (!statSync(configPath).isFile()) return defaults
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"))
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaults
+
+    const pickString = (candidates, fallback) => {
+      for (const value of candidates) {
+        if (typeof value === "string" && value.trim().length > 0) return value.trim()
+      }
+      return fallback
+    }
+
+    const rawExcluded = Array.isArray(parsed.excludedFolders)
+      ? parsed.excludedFolders
+      : Array.isArray(parsed.ignoreFolders)
+        ? parsed.ignoreFolders
+        : []
+
+    const excludedFolders = rawExcluded
+      .filter((entry) => typeof entry === "string")
+      .map((entry) =>
+        entry
+          .trim()
+          .replaceAll("\\", "/")
+          .replace(/^(?:\.\/|\/)+|\/+$/g, ""),
+      )
+      .filter(Boolean)
+
+    return {
+      openMarker: pickString([parsed.openMarker, parsed.startMarker], defaults.openMarker),
+      closeMarker: pickString([parsed.closeMarker, parsed.endMarker], defaults.closeMarker),
+      wholeNoteProperty: pickString(
+        [parsed.wholeNoteProperty, parsed.frontmatterProperty],
+        defaults.wholeNoteProperty,
+      ),
+      excludedFolders,
+    }
+  } catch {
+    return defaults
+  }
+}
+
+export function extractPlayerFacingContent(sourceMarkdown, options = {}) {
+  const openMarker = options.openMarker ?? DEFAULT_PFN_OPEN_MARKER
+  const closeMarker = options.closeMarker ?? DEFAULT_PFN_CLOSE_MARKER
+  const wholeNoteProperty = options.wholeNoteProperty ?? DEFAULT_PFN_WHOLE_NOTE_PROPERTY
+
+  const { frontmatter, body } = splitFrontmatter(sourceMarkdown)
+  const rawFlag = frontmatter?.[wholeNoteProperty]
+  const isWholeNote =
+    rawFlag === true || (typeof rawFlag === "string" && rawFlag.trim().toLowerCase() === "true")
+
+  const lines = body.split("\n")
+  let activeFence = null
+  let inPf = false
+  let hasMarkers = false
+  let currentBlock = []
+  const blocks = []
+  const wholeNoteLines = []
+
+  for (const line of lines) {
+    if (activeFence) {
+      const closePattern = new RegExp(`^\\s*${activeFence.char}{${activeFence.length},}\\s*$`)
+      if (closePattern.test(line)) {
+        activeFence = null
+      }
+      if (isWholeNote) {
+        wholeNoteLines.push(line)
+      } else if (inPf) {
+        currentBlock.push(line)
+      }
+      continue
+    }
+
+    const trimmed = line.trim()
+    if (trimmed === openMarker) {
+      hasMarkers = true
+      if (!inPf) {
+        inPf = true
+        currentBlock = []
+      }
+      continue
+    }
+
+    if (trimmed === closeMarker) {
+      if (inPf) {
+        inPf = false
+        blocks.push(currentBlock.join("\n"))
+        currentBlock = []
+      }
+      continue
+    }
+
+    const openMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/)
+    if (openMatch) {
+      const fence = openMatch[1]
+      activeFence = {
+        char: fence[0],
+        length: fence.length,
+      }
+    }
+
+    if (isWholeNote) {
+      wholeNoteLines.push(line)
+    } else if (inPf) {
+      currentBlock.push(line)
+    }
+  }
+
+  if (inPf && currentBlock.length > 0) {
+    blocks.push(currentBlock.join("\n"))
+  }
+
+  const nonEmptyBlocks = blocks.map((block) => block.trim()).filter((block) => block.length > 0)
+  const hasPlayerFacing = isWholeNote || (hasMarkers && nonEmptyBlocks.length > 0)
+  const extractedBody = isWholeNote ? wholeNoteLines.join("\n").trim() : nonEmptyBlocks.join("\n\n")
+
+  return {
+    hasPlayerFacing,
+    isWholeNote,
+    hasMarkers,
+    body: extractedBody,
+  }
+}
+
+function normalizeComparableBody(text) {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function unwrapWikilinks(text) {
+  return text.replace(/(?<!!)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, target, alias) => {
+    const label = alias ?? target.split("#")[0].split("/").pop() ?? ""
+    return label.trim()
+  })
+}
+
+function playerFacingBodiesMatch(expectedBody, exportedBody) {
+  if (normalizeComparableBody(expectedBody) === normalizeComparableBody(exportedBody)) {
+    return true
+  }
+  return (
+    normalizeComparableBody(unwrapWikilinks(expectedBody)) ===
+    normalizeComparableBody(unwrapWikilinks(exportedBody))
+  )
+}
+
+export function checkPlayerFacingSync({
+  vaultDirectory,
+  playerFacingDirectory,
+  playerFacingDirName = DEFAULT_PLAYER_FACING_DIR,
+  allowedAssetDirPaths = [],
+}) {
+  const pluginConfig = loadPfnPluginConfig(vaultDirectory)
+  const driftIssues = []
+  const exportedBySource = new Map()
+
+  const exportedMarkdownFiles = walkFiles(playerFacingDirectory).filter(
+    (file) => posix.extname(file.toLowerCase()) === ".md",
+  )
+
+  for (const exportedFile of exportedMarkdownFiles) {
+    const exportedRel = relative(vaultDirectory, exportedFile).replaceAll("\\", "/")
+    const { frontmatter, body: exportedBody } = splitFrontmatter(readFileSync(exportedFile, "utf8"))
+    const rawSource = frontmatter?.["pfn-source"]
+    if (typeof rawSource !== "string" || rawSource.trim().length === 0) continue
+
+    const sourceRel = rawSource
+      .trim()
+      .replaceAll("\\", "/")
+      .replace(/^(?:\.\/|\/)+/, "")
+      .replace(/\/{2,}/g, "/")
+    const sourcePath = resolve(vaultDirectory, ...sourceRel.split("/"))
+
+    if (
+      !sourceRel ||
+      hasDotSegment(sourceRel) ||
+      !isWithinDirectory(sourcePath, vaultDirectory) ||
+      !existsSync(sourcePath) ||
+      !statSync(sourcePath).isFile()
+    ) {
+      driftIssues.push(`${exportedRel}: references missing pfn-source "${sourceRel}"`)
+      continue
+    }
+
+    exportedBySource.set(sourceRel, exportedRel)
+    const extracted = extractPlayerFacingContent(readFileSync(sourcePath, "utf8"), pluginConfig)
+
+    if (!extracted.hasPlayerFacing) {
+      driftIssues.push(
+        `${exportedRel}: stale export because "${sourceRel}" no longer has player-facing content`,
+      )
+    } else if (!playerFacingBodiesMatch(extracted.body, exportedBody)) {
+      driftIssues.push(`${exportedRel}: out of date with "${sourceRel}"`)
+    }
+  }
+
+  const vaultMarkdownFiles = walkFiles(vaultDirectory).filter(
+    (file) => posix.extname(file.toLowerCase()) === ".md",
+  )
+
+  for (const sourceFile of vaultMarkdownFiles) {
+    if (
+      isWithinDirectory(sourceFile, playerFacingDirectory) ||
+      allowedAssetDirPaths.some((dir) => isWithinDirectory(sourceFile, dir))
+    ) {
+      continue
+    }
+
+    const sourceRel = relative(vaultDirectory, sourceFile).replaceAll("\\", "/")
+    if (
+      pluginConfig.excludedFolders.some(
+        (folder) => sourceRel === folder || sourceRel.startsWith(`${folder}/`),
+      )
+    ) {
+      continue
+    }
+
+    if (exportedBySource.has(sourceRel)) continue
+
+    const extracted = extractPlayerFacingContent(readFileSync(sourceFile, "utf8"), pluginConfig)
+    if (extracted.hasPlayerFacing) {
+      driftIssues.push(
+        `${sourceRel}: has player-facing content not exported to ${playerFacingDirName}/`,
+      )
+    }
+  }
+
+  return driftIssues.sort()
+}
 
 function parseAllowedAssetDirs(raw) {
   if (!raw || !raw.trim()) return [...DEFAULT_ALLOWED_ASSET_DIRS]
@@ -499,11 +775,19 @@ export function syncVault({
     (relPath) => posix.extname(relPath.toLowerCase()) === ".md",
   ).length
 
+  const playerFacingDrift = checkPlayerFacingSync({
+    vaultDirectory: resolvedVault,
+    playerFacingDirectory,
+    playerFacingDirName,
+    allowedAssetDirPaths,
+  })
+
   return {
     copiedPages,
     copiedAssets: copiedExtraAssets,
     missingReferences: [...missingReferences].sort(),
     disallowedReferences: [...disallowedReferences].sort(),
+    playerFacingDrift,
   }
 }
 
@@ -539,6 +823,16 @@ function main() {
     console.error("Missing references:")
     for (const reference of result.missingReferences) {
       console.error(`- ${reference}`)
+    }
+    process.exitCode = 1
+  }
+
+  if (result.playerFacingDrift.length > 0) {
+    console.error(
+      `Player-facing export drift detected (re-sync in Obsidian with Player Facing Notes, then commit and push ${DEFAULT_PLAYER_FACING_DIR}/):`,
+    )
+    for (const issue of result.playerFacingDrift) {
+      console.error(`- ${issue}`)
     }
     process.exitCode = 1
   }
