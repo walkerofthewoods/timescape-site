@@ -25,11 +25,27 @@ function hasClass(node, className) {
   return false
 }
 
+function isRefreshMeta(node) {
+  const httpEquiv = node.properties?.httpEquiv
+  if (Array.isArray(httpEquiv)) {
+    return httpEquiv.some((value) => String(value).toLowerCase() === "refresh")
+  }
+  return typeof httpEquiv === "string" && httpEquiv.toLowerCase() === "refresh"
+}
+
+function parseRefreshTarget(content) {
+  if (typeof content !== "string") return null
+  const match = content.match(/;\s*url\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;]+))/i)
+  const raw = (match?.[1] ?? match?.[2] ?? match?.[3] ?? "").trim()
+  return raw || null
+}
+
 function collectPageInspectables(tree) {
   const anchors = []
   const mediaSrcs = []
   const headings = []
   const maps = []
+  const refreshTargets = []
 
   const walk = (node) => {
     if (node.type === "element") {
@@ -52,6 +68,10 @@ function collectPageInspectables(tree) {
         headings.push(getTextContent(node).trim())
       }
 
+      if (node.tagName === "meta" && isRefreshMeta(node)) {
+        refreshTargets.push(parseRefreshTarget(node.properties?.content))
+      }
+
       if (node.properties?.dataQzTtrpgMapCfg !== undefined || hasClass(node, "ttrpg-map-root")) {
         maps.push(node)
       }
@@ -61,7 +81,7 @@ function collectPageInspectables(tree) {
   }
 
   walk(tree)
-  return { anchors, mediaSrcs, headings, maps }
+  return { anchors, mediaSrcs, headings, maps, refreshTargets }
 }
 
 function outputCandidates(pathname, outputDirectory) {
@@ -209,13 +229,23 @@ export function checkBuiltSite(
   let checkedLinks = 0
   let checkedMedia = 0
   let checkedMaps = 0
+  let checkedRedirects = 0
 
   for (const htmlFile of htmlFiles) {
     const pagePath = relative(outputDirectory, htmlFile).split(sep).join("/")
     const tree = fromHtml(readFileSync(htmlFile, "utf8"))
-    const { anchors, mediaSrcs, headings, maps } = collectPageInspectables(tree)
+    const { anchors, mediaSrcs, headings, maps, refreshTargets } = collectPageInspectables(tree)
 
-    if (pagePath !== "404.html" && !headings.some((text) => text.length > 0)) {
+    if (refreshTargets.length > 0) {
+      for (const target of refreshTargets) {
+        checkedRedirects++
+        if (!target) {
+          errors.push(`${pagePath}: redirect meta tag is missing target url`)
+        } else if (!isInternalTargetValid(target, pagePath, outputDirectory, normalizedBasePath)) {
+          errors.push(`${pagePath}: broken redirect target "${target}"`)
+        }
+      }
+    } else if (pagePath !== "404.html" && !headings.some((text) => text.length > 0)) {
       errors.push(`${pagePath}: missing non-empty <h1> heading`)
     }
 
@@ -244,6 +274,7 @@ export function checkBuiltSite(
     checkedLinks,
     checkedMedia,
     checkedMaps,
+    checkedRedirects,
     errors,
   }
 }
@@ -257,8 +288,10 @@ function main() {
     return
   }
 
+  const redirectSummary =
+    result.checkedRedirects > 0 ? `, ${result.checkedRedirects} redirects` : ""
   console.log(
-    `Verified ${result.htmlFiles} HTML files (${result.checkedLinks} links, ${result.checkedMedia} media refs, ${result.checkedMaps} maps).`,
+    `Verified ${result.htmlFiles} HTML files (${result.checkedLinks} links, ${result.checkedMedia} media refs, ${result.checkedMaps} maps${redirectSummary}).`,
   )
 }
 

@@ -88,3 +88,59 @@ test("checkBuiltSite catches broken links, missing media, missing headings, and 
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test("checkBuiltSite validates meta refresh redirect stubs without failing on missing h1", () => {
+  const validRoot = createValidSiteFixture()
+  try {
+    writeSiteFile(
+      validRoot,
+      "atlas-of-time/maps/omund's-land.html",
+      "<html><body><h1>Omund's Land</h1></body></html>",
+    )
+    writeSiteFile(
+      validRoot,
+      "Old-Maps/Omund's-Land.html",
+      [
+        "<!DOCTYPE html>",
+        '<html lang="en-us"><head>',
+        "<title>atlas-of-time/maps/omund's-land</title>",
+        '<meta charset="utf-8">',
+        '<meta http-equiv="refresh" content="0; url=../atlas-of-time/maps/omund\'s-land">',
+        "</head></html>",
+      ].join(""),
+    )
+
+    const validResult = checkBuiltSite(validRoot, { basePath: "/timescape-site" })
+    assert.deepEqual(validResult.errors, [])
+    assert.equal(validResult.htmlFiles, 5)
+    assert.equal(validResult.checkedRedirects, 1)
+  } finally {
+    rmSync(validRoot, { recursive: true, force: true })
+  }
+
+  const invalidRoot = createValidSiteFixture()
+  try {
+    writeSiteFile(
+      invalidRoot,
+      "Old-Maps/Broken.html",
+      '<html><head><meta http-equiv="refresh" content="0; url=../does-not-exist"></head></html>',
+    )
+    writeSiteFile(
+      invalidRoot,
+      "Old-Maps/No-Url.html",
+      '<html><head><meta http-equiv="refresh" content="0"></head></html>',
+    )
+
+    const invalidResult = checkBuiltSite(invalidRoot, { basePath: "/timescape-site" })
+    assert.equal(invalidResult.checkedRedirects, 2)
+    assert.ok(
+      invalidResult.errors.some((e) => e.includes('broken redirect target "../does-not-exist"')),
+    )
+    assert.ok(
+      invalidResult.errors.some((e) => e.includes("redirect meta tag is missing target url")),
+    )
+    assert.ok(!invalidResult.errors.some((e) => e.includes("missing non-empty <h1>")))
+  } finally {
+    rmSync(invalidRoot, { recursive: true, force: true })
+  }
+})
