@@ -8,20 +8,37 @@ Set `TIMESCAPE_VAULT` (or pass the path directly) to sync `z_player_facing/` and
 
 ```bash
 export TIMESCAPE_VAULT=/path/to/timescape-vault
+npm run sync:obsidian  # checks for drift and triggers Obsidian Player Facing Notes sync if stale
 npm run sync:vault
 # or: npm run sync:vault -- /path/to/timescape-vault
 ```
+
+_(If you use multiple Obsidian vaults, set `TIMESCAPE_VAULT_NAME` or pass `-- --vault-name "<VaultName>"` to `npm run sync:obsidian`. Make sure Obsidian's CLI is enabled in **Settings -> General -> Command line interface**.)_
 
 Build and preview locally:
 
 ```bash
 npm run install-plugins
-npm run preview        # syncs vault and runs quartz build --serve into .quartz-preview/
+npm run preview        # syncs Obsidian PFN exports (if stale), syncs vault, and serves into .quartz-preview/
 npm run serve          # runs quartz build --serve into .quartz-preview/ without re-syncing
 npm run build          # builds public/ and rewrites map asset paths for GitHub Pages
 ```
 
 `preview` and `serve` write to `.quartz-preview/` with a dedicated esbuild cache so `npm run build` and `npm run test:e2e` do not disrupt a running dev server. If `z_player_facing/index.md` does not exist in the vault, `scripts/sync-vault.mjs` falls back to `overrides/index.md`.
+
+### Automatic Vault `pre-commit` Hook
+
+To ensure edits made outside Obsidian update `z_player_facing/` automatically before you commit in your Obsidian vault repo (launching Obsidian if needed and staging `z_player_facing/` into the same commit), copy `scripts/vault-pre-commit.sh` into your vault's `.git/hooks/pre-commit`:
+
+```bash
+cp scripts/vault-pre-commit.sh /path/to/timescape-vault/.git/hooks/pre-commit && chmod +x /path/to/timescape-vault/.git/hooks/pre-commit
+```
+
+On Windows Cmder / Command Prompt:
+
+```cmd
+copy scripts\vault-pre-commit.sh C:\path\to\timescape-vault\.git\hooks\pre-commit
+```
 
 ## Testing & Verification
 

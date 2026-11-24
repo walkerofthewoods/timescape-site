@@ -219,13 +219,19 @@ function unwrapWikilinks(text) {
   })
 }
 
-function playerFacingBodiesMatch(expectedBody, exportedBody) {
-  if (normalizeComparableBody(expectedBody) === normalizeComparableBody(exportedBody)) {
+function playerFacingBodiesMatch(
+  expectedBody,
+  exportedBody,
+  playerFacingDirName = DEFAULT_PLAYER_FACING_DIR,
+) {
+  const normalizedExpected = rewritePlayerFacingLinks(expectedBody, playerFacingDirName)
+  const normalizedExported = rewritePlayerFacingLinks(exportedBody, playerFacingDirName)
+  if (normalizeComparableBody(normalizedExpected) === normalizeComparableBody(normalizedExported)) {
     return true
   }
   return (
-    normalizeComparableBody(unwrapWikilinks(expectedBody)) ===
-    normalizeComparableBody(unwrapWikilinks(exportedBody))
+    normalizeComparableBody(unwrapWikilinks(normalizedExpected)) ===
+    normalizeComparableBody(unwrapWikilinks(normalizedExported))
   )
 }
 
@@ -274,7 +280,7 @@ export function checkPlayerFacingSync({
       driftIssues.push(
         `${exportedRel}: stale export because "${sourceRel}" no longer has player-facing content`,
       )
-    } else if (!playerFacingBodiesMatch(extracted.body, exportedBody)) {
+    } else if (!playerFacingBodiesMatch(extracted.body, exportedBody, playerFacingDirName)) {
       driftIssues.push(`${exportedRel}: out of date with "${sourceRel}"`)
     }
   }
@@ -311,6 +317,131 @@ export function checkPlayerFacingSync({
   }
 
   return driftIssues.sort()
+}
+
+function rewriteLineProseSegments(line, rewriteSegment) {
+  let result = ""
+  let cursor = 0
+
+  while (cursor < line.length) {
+    const tickStart = line.indexOf("`", cursor)
+    if (tickStart === -1) {
+      result += rewriteSegment(line.slice(cursor))
+      break
+    }
+
+    let tickEnd = tickStart
+    while (tickEnd < line.length && line[tickEnd] === "`") tickEnd++
+    const fenceLength = tickEnd - tickStart
+
+    let searchFrom = tickEnd
+    let closeStart = -1
+    while (searchFrom < line.length) {
+      const candidate = line.indexOf("`", searchFrom)
+      if (candidate === -1) break
+      let candidateEnd = candidate
+      while (candidateEnd < line.length && line[candidateEnd] === "`") candidateEnd++
+      if (candidateEnd - candidate === fenceLength) {
+        closeStart = candidate
+        searchFrom = candidateEnd
+        break
+      }
+      searchFrom = candidateEnd
+    }
+
+    if (closeStart === -1) {
+      result += rewriteSegment(line.slice(cursor))
+      break
+    }
+
+    result += rewriteSegment(line.slice(cursor, tickStart))
+    result += line.slice(tickStart, searchFrom)
+    cursor = searchFrom
+  }
+
+  return result
+}
+
+function stripPlayerFacingPrefix(target, prefixPattern) {
+  const leadingWs = target.match(/^\s*/)?.[0] ?? ""
+  const trimmedStart = target.slice(leadingWs.length)
+  if (/^(?:[a-z][a-z0-9+.-]+:|\/\/|#)/i.test(trimmedStart)) return target
+  return leadingWs + trimmedStart.replace(prefixPattern, "")
+}
+
+function rewriteProseSegment(segment, prefixPattern) {
+  let rewritten = segment.replace(/(!?\[\[)([^\]\r\n]+)(\]\])/g, (_match, open, inner, close) => {
+    const pipeIdx = inner.indexOf("|")
+    const target = pipeIdx === -1 ? inner : inner.slice(0, pipeIdx)
+    const aliasPart = pipeIdx === -1 ? "" : inner.slice(pipeIdx)
+    return `${open}${stripPlayerFacingPrefix(target, prefixPattern)}${aliasPart}${close}`
+  })
+
+  rewritten = rewritten.replace(
+    /(!?\[[^\]]*\]\()(<[^>]+>|(?:[^()\r\n]|\([^()\r\n]*\))+)(\))/g,
+    (_match, open, dest, close) => {
+      if (dest.startsWith("<") && dest.endsWith(">")) {
+        const inner = dest.slice(1, -1)
+        return `${open}<${stripPlayerFacingPrefix(inner, prefixPattern)}>${close}`
+      }
+      const titleMatch = dest.match(/^(\s*)(.+?)(\s+(?:"[^"]*"|'[^']*')\s*)?$/)
+      if (!titleMatch) return `${open}${dest}${close}`
+      const [, leading = "", rawUrl, trailing = ""] = titleMatch
+      return `${open}${leading}${stripPlayerFacingPrefix(rawUrl, prefixPattern)}${trailing}${close}`
+    },
+  )
+
+  return rewritten
+}
+
+export function rewritePlayerFacingLinks(
+  sourceMarkdown,
+  playerFacingDirName = DEFAULT_PLAYER_FACING_DIR,
+) {
+  const normalizedDir = playerFacingDirName
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^(?:\.\/|\/)+|\/+$/g, "")
+  if (!normalizedDir) return sourceMarkdown
+
+  const escapedDir = normalizedDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\//g, "[/\\\\]")
+  const prefixPattern = new RegExp(`^(?:\\./|/)?${escapedDir}[/\\\\]`, "i")
+
+  const parts = sourceMarkdown.split(/(\r?\n)/)
+  let activeFence = null
+  let output = ""
+
+  for (let i = 0; i < parts.length; i += 2) {
+    const line = parts[i]
+    const eol = parts[i + 1] ?? ""
+
+    if (activeFence) {
+      const closePattern = new RegExp(`^\\s*${activeFence.char}{${activeFence.length},}\\s*$`)
+      if (closePattern.test(line)) {
+        activeFence = null
+      }
+      output += line + eol
+      continue
+    }
+
+    const openMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/)
+    if (openMatch) {
+      const fence = openMatch[1]
+      activeFence = {
+        char: fence[0],
+        length: fence.length,
+      }
+      output += line + eol
+      continue
+    }
+
+    output += rewriteLineProseSegments(line, (segment) =>
+      rewriteProseSegment(segment, prefixPattern),
+    )
+    output += eol
+  }
+
+  return output
 }
 
 function parseAllowedAssetDirs(raw) {
@@ -601,6 +732,7 @@ function resolveAssetPath(reference, sourceFile, context) {
   const parts = normalized.split("/")
   const explicitCandidates = [
     resolve(dirname(sourceFile), ...parts),
+    resolve(playerFacingDirectory, ...parts),
     resolve(vaultDirectory, ...parts),
   ]
 
@@ -715,7 +847,10 @@ export function syncVault({
   }
 
   for (const markdownFile of markdownFiles) {
-    const sourceMarkdown = readFileSync(markdownFile, "utf8")
+    const sourceMarkdown = rewritePlayerFacingLinks(
+      readFileSync(markdownFile, "utf8"),
+      playerFacingDirName,
+    )
     const { assetRefs, markerRefs } = extractAssetReferences(sourceMarkdown)
 
     for (const ref of assetRefs) {
@@ -750,7 +885,13 @@ export function syncVault({
 
   for (const [relPosix, sourcePath] of desiredFiles) {
     const destPath = join(resolvedContent, ...relPosix.split("/"))
-    const sourceBytes = readFileSync(sourcePath)
+    const isMarkdown = posix.extname(relPosix.toLowerCase()) === ".md"
+    const sourceBytes = isMarkdown
+      ? Buffer.from(
+          rewritePlayerFacingLinks(readFileSync(sourcePath, "utf8"), playerFacingDirName),
+          "utf8",
+        )
+      : readFileSync(sourcePath)
     if (existsSync(destPath)) {
       if (statSync(destPath).isFile()) {
         if (readFileSync(destPath).equals(sourceBytes)) continue

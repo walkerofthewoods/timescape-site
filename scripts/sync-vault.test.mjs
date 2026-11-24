@@ -16,6 +16,7 @@ import {
   extractAssetReferences,
   extractPlayerFacingContent,
   normalizeReference,
+  rewritePlayerFacingLinks,
   syncVault,
 } from "./sync-vault.mjs"
 
@@ -489,6 +490,124 @@ test("syncVault detects stale, unexported, orphaned, and emptied player-facing e
     assert.doesNotMatch(combinedOutput, /NEW_PUBLIC_LINE/)
     assert.doesNotMatch(combinedOutput, /UNEXPORTED_HANDOUT_BODY_TOKEN/)
     assert.doesNotMatch(combinedOutput, /SECRET_RETRACTED_BODY_TOKEN/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test("rewritePlayerFacingLinks strips z_player_facing prefixes from wikilinks and markdown links in prose only", () => {
+  const input = [
+    "- [[z_player_facing/Locations/Capital/The Cauldron|The Cauldron]]",
+    "- [[z_player_facing/Campaigns/The Condemned/NPCs/Guilds and Groups/House Vorona|House Vorona]]",
+    "- [[z_player_facing/Locations/Capital/Capital#Key Districts|Capital]]",
+    "- ![[z_player_facing/Locations/map.png|400]]",
+    "- [The Cauldron](<z_player_facing/Locations/Capital/The Cauldron.md>)",
+    "- [The Cauldron](z_player_facing/Locations/Capital/The%20Cauldron.md)",
+    "- Unprefixed [[Locations/Capital/Capital|Capital]] and [Orden](https://example.com/orden)",
+    "- Inline code `[[z_player_facing/Locations/KeepMe]]` and ``[Keep](z_player_facing/Keep.md)``",
+    "```markdown",
+    "[[z_player_facing/Locations/InFence]]",
+    "[InFence](z_player_facing/InFence.md)",
+    "```",
+  ].join("\r\n")
+
+  const expected = [
+    "- [[Locations/Capital/The Cauldron|The Cauldron]]",
+    "- [[Campaigns/The Condemned/NPCs/Guilds and Groups/House Vorona|House Vorona]]",
+    "- [[Locations/Capital/Capital#Key Districts|Capital]]",
+    "- ![[Locations/map.png|400]]",
+    "- [The Cauldron](<Locations/Capital/The Cauldron.md>)",
+    "- [The Cauldron](Locations/Capital/The%20Cauldron.md)",
+    "- Unprefixed [[Locations/Capital/Capital|Capital]] and [Orden](https://example.com/orden)",
+    "- Inline code `[[z_player_facing/Locations/KeepMe]]` and ``[Keep](z_player_facing/Keep.md)``",
+    "```markdown",
+    "[[z_player_facing/Locations/InFence]]",
+    "[InFence](z_player_facing/InFence.md)",
+    "```",
+  ].join("\r\n")
+
+  assert.equal(rewritePlayerFacingLinks(input), expected)
+})
+
+test("syncVault rewrites z_player_facing link prefixes into content/ without triggering drift or mtime churn", () => {
+  const { root, vault, content, fallbackIndex } = createFixtureWorkspace()
+  try {
+    writeFixtureFile(
+      vault,
+      "Locations/Capital/Capital.md",
+      [
+        "::pf",
+        "# Capital",
+        "Visit [[Locations/Capital/The Cauldron|The Cauldron]].",
+        "![[Locations/Capital/emblem.png]]",
+        "::/pf",
+      ].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "Locations/Capital/The Cauldron.md",
+      ["::pf", "# The Cauldron", "Inside [[Locations/Capital/Capital|Capital]].", "::/pf"].join(
+        "\n",
+      ),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Locations/Capital/Capital.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Locations/Capital/Capital.md"',
+        "---",
+        "# Capital",
+        "Visit [[z_player_facing/Locations/Capital/The Cauldron|The Cauldron]].",
+        "![[z_player_facing/Locations/Capital/emblem.png]]",
+      ].join("\n"),
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Locations/Capital/The Cauldron.md",
+      [
+        "---",
+        "publish: true",
+        'pfn-source: "Locations/Capital/The Cauldron.md"',
+        "---",
+        "# The Cauldron",
+        "Inside [[z_player_facing/Locations/Capital/Capital|Capital]].",
+      ].join("\n"),
+    )
+    writeFixtureFile(vault, "z_player_facing/Locations/Capital/emblem.png", "png-bytes")
+
+    const firstResult = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+
+    assert.deepEqual(firstResult.missingReferences, [])
+    assert.deepEqual(firstResult.disallowedReferences, [])
+    assert.deepEqual(firstResult.playerFacingDrift, [])
+
+    const capitalDest = join(content, "Locations/Capital/Capital.md")
+    const cauldronDest = join(content, "Locations/Capital/The Cauldron.md")
+    assert.match(
+      readFileSync(capitalDest, "utf8"),
+      /\[\[Locations\/Capital\/The Cauldron\|The Cauldron\]\]/,
+    )
+    assert.match(readFileSync(capitalDest, "utf8"), /!\[\[Locations\/Capital\/emblem\.png\]\]/)
+    assert.doesNotMatch(readFileSync(capitalDest, "utf8"), /\[\[z_player_facing\//)
+    assert.match(readFileSync(cauldronDest, "utf8"), /\[\[Locations\/Capital\/Capital\|Capital\]\]/)
+
+    const past = new Date(Date.now() - 60_000)
+    utimesSync(capitalDest, past, past)
+    const mtimeBefore = statSync(capitalDest).mtimeMs
+
+    const secondResult = syncVault({
+      vaultDirectory: vault,
+      contentDirectory: content,
+      fallbackIndexPath: fallbackIndex,
+    })
+    assert.deepEqual(secondResult.playerFacingDrift, [])
+    assert.equal(statSync(capitalDest).mtimeMs, mtimeBefore)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
