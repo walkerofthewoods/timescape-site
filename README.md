@@ -8,18 +8,17 @@ Set `TIMESCAPE_VAULT` (or pass the path directly) to sync `z_player_facing/` and
 
 ```bash
 export TIMESCAPE_VAULT=/path/to/timescape-vault
-npm run sync:obsidian  # checks for drift and triggers Obsidian Player Facing Notes sync if stale
 npm run sync:vault
 # or: npm run sync:vault -- /path/to/timescape-vault
 ```
 
-_(If you use multiple Obsidian vaults, set `TIMESCAPE_VAULT_NAME` or pass `-- --vault-name "<VaultName>"` to `npm run sync:obsidian`. Make sure Obsidian's CLI is enabled in **Settings -> General -> Command line interface**.)_
+Locally, `npm run sync:vault` (and `npm run preview`) automatically refreshes Obsidian Player Facing Notes exports when drift is detected—opening Obsidian if needed—before syncing into `content/`. In CI (`CI=true`), or when passing `-- --no-obsidian`, it skips Obsidian and fails loudly if `z_player_facing/` has drifted. _(If you use multiple Obsidian vaults, set `TIMESCAPE_VAULT_NAME` or pass `-- --vault-name "<VaultName>"`, and make sure Obsidian's CLI is enabled in **Settings -> General -> Command line interface**.)_
 
 Build and preview locally:
 
 ```bash
 npm run install-plugins
-npm run preview        # syncs Obsidian PFN exports (if stale), syncs vault, and serves into .quartz-preview/
+npm run preview        # syncs vault (refreshing Obsidian PFN exports locally if stale) and serves into .quartz-preview/
 npm run serve          # runs quartz build --serve into .quartz-preview/ without re-syncing
 npm run build          # builds public/ and rewrites map asset paths for GitHub Pages
 ```

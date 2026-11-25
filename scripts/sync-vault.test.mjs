@@ -16,6 +16,7 @@ import {
   extractAssetReferences,
   extractPlayerFacingContent,
   normalizeReference,
+  parseSyncCliArgs,
   rewritePlayerFacingLinks,
   syncVault,
 } from "./sync-vault.mjs"
@@ -611,4 +612,49 @@ test("syncVault rewrites z_player_facing link prefixes into content/ without tri
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test("parseSyncCliArgs enables Obsidian pre-sync locally and disables it in CI or with --no-obsidian", () => {
+  const localDefault = parseSyncCliArgs([], {
+    TIMESCAPE_VAULT: "/vault",
+    TIMESCAPE_VAULT_NAME: "The Timescape",
+  })
+  assert.deepEqual(localDefault, {
+    vaultPath: "/vault",
+    vaultName: "The Timescape",
+    timeoutMs: 25_000,
+    useObsidian: true,
+  })
+
+  const ciDisabled = parseSyncCliArgs([], {
+    TIMESCAPE_VAULT: "/vault",
+    CI: "true",
+  })
+  assert.equal(ciDisabled.useObsidian, false)
+
+  const ciFalseStillEnabled = parseSyncCliArgs([], {
+    TIMESCAPE_VAULT: "/vault",
+    CI: "false",
+  })
+  assert.equal(ciFalseStillEnabled.useObsidian, true)
+
+  const ciZeroStillEnabled = parseSyncCliArgs([], {
+    TIMESCAPE_VAULT: "/vault",
+    CI: "0",
+  })
+  assert.equal(ciZeroStillEnabled.useObsidian, true)
+
+  const flagOverride = parseSyncCliArgs(
+    ["/custom-vault", "--vault-name", "Campaign", "--timeout=10", "--no-obsidian"],
+    {
+      TIMESCAPE_VAULT: "/vault",
+      TIMESCAPE_VAULT_NAME: "Ignored",
+    },
+  )
+  assert.deepEqual(flagOverride, {
+    vaultPath: "/custom-vault",
+    vaultName: "Campaign",
+    timeoutMs: 10_000,
+    useObsidian: false,
+  })
 })

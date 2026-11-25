@@ -932,18 +932,103 @@ export function syncVault({
   }
 }
 
-function main() {
-  const vaultArg = process.argv[2] ?? process.env.TIMESCAPE_VAULT
-  if (!vaultArg || !vaultArg.trim()) {
+function isTruthyCi(raw) {
+  if (raw === undefined) return false
+  const normalized = String(raw).trim().toLowerCase()
+  return normalized !== "" && normalized !== "0" && normalized !== "false"
+}
+
+export function parseSyncCliArgs(argv, env = process.env) {
+  let vaultPath
+  let vaultName
+  let timeoutSeconds = 25
+  let noObsidian = false
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === "--") continue
+
+    if (arg === "--no-obsidian") {
+      noObsidian = true
+    } else if (arg === "--vault-name") {
+      vaultName = argv[++i]
+    } else if (arg.startsWith("--vault-name=")) {
+      vaultName = arg.slice("--vault-name=".length)
+    } else if (arg === "--timeout") {
+      timeoutSeconds = Number(argv[++i])
+    } else if (arg.startsWith("--timeout=")) {
+      timeoutSeconds = Number(arg.slice("--timeout=".length))
+    } else if (arg.startsWith("-")) {
+      throw new Error(`Unknown option: ${arg}`)
+    } else if (!vaultPath) {
+      vaultPath = arg
+    } else {
+      throw new Error(`Unexpected argument: ${arg}`)
+    }
+  }
+
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
+    throw new Error("--timeout must be a non-negative number of seconds.")
+  }
+
+  return {
+    vaultPath: vaultPath ?? env.TIMESCAPE_VAULT,
+    vaultName: vaultName?.trim() || env.TIMESCAPE_VAULT_NAME?.trim() || undefined,
+    timeoutMs: timeoutSeconds * 1000,
+    useObsidian: !noObsidian && !isTruthyCi(env.CI),
+  }
+}
+
+async function main() {
+  let parsed
+  try {
+    parsed = parseSyncCliArgs(process.argv.slice(2))
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
+
+  if (!parsed.vaultPath || !parsed.vaultPath.trim()) {
     console.error(
       "Vault path is required. Pass it as an argument (`npm run sync:vault -- <path>`) or set TIMESCAPE_VAULT.",
     )
     process.exit(1)
   }
 
+  if (parsed.useObsidian) {
+    let pfnResult
+    try {
+      const { ensurePlayerFacingSynced } = await import("./ensure-pfn-synced.mjs")
+      pfnResult = await ensurePlayerFacingSynced({
+        vaultDirectory: parsed.vaultPath,
+        vaultName: parsed.vaultName,
+        allowedAssetDirs: parseAllowedAssetDirs(process.env.TIMESCAPE_ASSET_DIRS),
+        timeoutMs: parsed.timeoutMs,
+      })
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+
+    if (pfnResult.status === "synced") {
+      console.log("Player-facing exports synced via Obsidian.")
+    } else if (pfnResult.status === "stale") {
+      if (pfnResult.lastCommandError) {
+        console.error(`Obsidian CLI error: ${pfnResult.lastCommandError}`)
+      }
+      console.error(
+        `Player-facing export drift detected (open Obsidian and run 'Player Facing Notes: Sync vault', or pass --no-obsidian to sync ${DEFAULT_PLAYER_FACING_DIR}/ directly):`,
+      )
+      for (const issue of pfnResult.drift) {
+        console.error(`- ${issue}`)
+      }
+      process.exit(1)
+    }
+  }
+
   let result
   try {
-    result = syncVault({ vaultDirectory: vaultArg })
+    result = syncVault({ vaultDirectory: parsed.vaultPath })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
@@ -979,4 +1064,4 @@ function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main()
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main()

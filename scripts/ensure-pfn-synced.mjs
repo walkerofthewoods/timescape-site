@@ -295,7 +295,7 @@ async function main() {
 
   if (!parsed.vaultPath || !parsed.vaultPath.trim()) {
     console.error(
-      "Vault path is required. Pass it as an argument (`npm run sync:obsidian -- <path>`) or set TIMESCAPE_VAULT.",
+      "Vault path is required. Pass it as an argument (`node scripts/ensure-pfn-synced.mjs <path>`) or set TIMESCAPE_VAULT.",
     )
     process.exit(1)
   }
