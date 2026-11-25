@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import {
   existsSync,
   mkdirSync,
@@ -657,4 +658,38 @@ test("parseSyncCliArgs enables Obsidian pre-sync locally and disables it in CI o
     timeoutMs: 10_000,
     useObsidian: false,
   })
+})
+
+test("sync-vault CLI executes local Obsidian pre-sync without top-level await deadlock", () => {
+  const { root, vault, content } = createFixtureWorkspace()
+  try {
+    writeFixtureFile(vault, "Campaigns/Lore.md", "::pf\nPublic lore\n::/pf\n")
+    writeFixtureFile(
+      vault,
+      "z_player_facing/Campaigns/Lore.md",
+      '---\npublish: true\npfn-source: "Campaigns/Lore.md"\n---\nPublic lore\n',
+    )
+    writeFixtureFile(
+      vault,
+      "z_player_facing/index.md",
+      "---\ntitle: Home\npublish: true\n---\nWelcome\n",
+    )
+
+    const result = spawnSync(process.execPath, ["scripts/sync-vault.mjs", vault], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CI: "",
+        TIMESCAPE_CONTENT_DIR: content,
+      },
+    })
+
+    assert.equal(result.status, 0, result.stderr)
+    assert.doesNotMatch(result.stderr, /unsettled top-level await/i)
+    assert.match(result.stdout, /Synced 2 player-facing Markdown pages\./)
+    assert.ok(existsSync(join(content, "Campaigns/Lore.md")))
+    assert.ok(existsSync(join(content, "index.md")))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

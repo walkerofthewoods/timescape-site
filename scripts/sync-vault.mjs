@@ -784,7 +784,9 @@ function pruneEmptyDirectories(directory, rootDirectory) {
 
 export function syncVault({
   vaultDirectory,
-  contentDirectory = join(siteDirectory, "content"),
+  contentDirectory = process.env.TIMESCAPE_CONTENT_DIR
+    ? resolve(process.env.TIMESCAPE_CONTENT_DIR)
+    : join(siteDirectory, "content"),
   playerFacingDirName = DEFAULT_PLAYER_FACING_DIR,
   allowedAssetDirs = parseAllowedAssetDirs(process.env.TIMESCAPE_ASSET_DIRS),
   fallbackIndexPath = join(siteDirectory, "overrides", "index.md"),
@@ -1064,4 +1066,9 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main()
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  })
+}
